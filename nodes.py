@@ -1590,7 +1590,19 @@ def _raw_transformer_velocity(
             model_output, _ = comfy.utils.pack_latents(model_output)
     if not torch.is_tensor(model_output):
         raise RuntimeError("Krea2 Style Transfer expected diffusion_model to return a tensor.")
-    return model_output.float()
+    return model_output.to(dtype=xc.dtype)
+
+
+def _model_inference_dtype_from_apply_model(apply_model: Callable, fallback: torch.dtype) -> torch.dtype:
+    base_model = getattr(apply_model, "__self__", None)
+    if base_model is not None and hasattr(base_model, "get_dtype_inference"):
+        try:
+            dtype = base_model.get_dtype_inference()
+            if dtype in (torch.float16, torch.bfloat16, torch.float32):
+                return dtype
+        except Exception:
+            pass
+    return fallback
 
 
 def _make_raw_velocity_apply_model_fn(apply_model: Callable) -> Callable:
@@ -1698,12 +1710,11 @@ def _build_rf_cache(
     z = ref_clean.clone()
     cache: Dict[float, torch.Tensor] = {0.0: z.detach().clone()}
     device = ref_clean.device
-    dtype = ref_clean.dtype
 
     def call_velocity(z_in: torch.Tensor, sigma_value: float) -> torch.Tensor:
-        t = torch.full((z_in.shape[0],), float(sigma_value), device=device, dtype=dtype)
+        t = torch.full((z_in.shape[0],), float(sigma_value), device=device, dtype=torch.float32)
         with torch.no_grad():
-            return apply_model_fn(z_in, t, **base_model_kwargs).float()
+            return apply_model_fn(z_in, t, **base_model_kwargs).to(dtype=z_in.dtype)
 
     if mode == "linear":
         for sigma in sigmas[1:]:
@@ -2076,7 +2087,8 @@ class Krea2StyleTransfer:
             to[_CONFIG_KEY] = style_cfg
 
             if not state.get("schedule_built", False):
-                ref_for_build = _repeat_to_batch(ref_clean.to(device=input_x.device, dtype=input_x.dtype), target_b)
+                rf_dtype = _model_inference_dtype_from_apply_model(apply_model, input_x.dtype)
+                ref_for_build = _repeat_to_batch(ref_clean.to(device=input_x.device, dtype=rf_dtype), target_b)
                 rf_kwargs = _build_rf_conditioning_kwargs(c, ref_conditioning, target_b)
                 cache, eps, sorted_sigmas = _build_rf_cache(
                     ref_for_build,
@@ -2433,8 +2445,9 @@ class Krea2TwoStyleTransfer:
 
             if not state.get("schedule_built", False):
                 caches = []
+                rf_dtype = _model_inference_dtype_from_apply_model(apply_model, input_x.dtype)
                 for ref_clean in ref_clean_list:
-                    ref_for_build = _repeat_to_batch(ref_clean.to(device=input_x.device, dtype=input_x.dtype), target_b)
+                    ref_for_build = _repeat_to_batch(ref_clean.to(device=input_x.device, dtype=rf_dtype), target_b)
                     rf_kwargs = _build_rf_conditioning_kwargs(c, ref_conditioning, target_b)
                     cache, eps, sorted_sigmas = _build_rf_cache(
                         ref_for_build,
