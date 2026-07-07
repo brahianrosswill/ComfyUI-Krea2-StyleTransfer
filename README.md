@@ -111,8 +111,9 @@ Inputs include:
 - `primary_reference`
 - `ref_k_1`
 - `ref_k_2`
+- `first_phase_ratio`
 
-`primary_reference` chooses which reference acts as the main style anchor.
+`primary_reference` selects which reference enters the first, longer style stage. With the recommended `first_phase_ratio = 0.75`, this usually makes that image the main visual anchor.
 
 ### `Krea2 Size Preset`
 
@@ -148,25 +149,75 @@ scheduler: simple
 denoise: 1.0
 ```
 
-## Why Two References Only?
+## Two-Reference Mode
 
-Multi-reference support is intentionally limited to two images.
+Two-reference transfer is intentionally limited to two images.
 
-In this training-free route, reference images are not fused by a trained official style module. Each reference brings its own style signal into the K/V path. With two references, the result is still relatively controllable: one image can act as the primary style anchor while the other contributes secondary color, linework, texture, or atmosphere.
+In this training-free route, references are not fused by a trained official style module. Each image brings its own style signal into the K/V path. With two references, the result is still reasonably controllable: one image can provide the main style direction while the other contributes secondary palette, linework, texture, or atmosphere.
 
-With three or more references, the signals tend to compete rather than blend cleanly. In testing, this often caused weaker style transfer, quality loss, unstable dominance by one reference, or results that were difficult to explain.
+With three or more references, the signals tend to compete rather than blend cleanly. In testing this often caused weaker style transfer, quality loss, unstable dominance by one reference, or results that were difficult to explain. Two references are the practical limit for this route.
 
-Two references are the practical limit for this route.
+### Stage-Based Blending
 
-## Why `primary_reference` Exists
+Two-reference mode is stage-based, not a simple weighted average.
 
-Two-reference transfer is not a simple weighted average.
+The selected `primary_reference` enters the first style stage. The other reference enters the later stage. Early tests used a 50/50 split, but that was not visually balanced: later sampling steps have stronger influence on final outlines, colors, texture, and surface details, so the second-stage reference often looked too dominant.
 
-The order of the references matters. In our experiments, the first or primary reference often affects the overall style entry point: base palette, outline treatment, background tendency, sticker-like borders, and other strong visual cues.
+The recommended preset now uses:
 
-`primary_reference` lets you choose which image acts as the main style anchor. The secondary reference still contributes, but the primary reference has more influence over the overall visual direction.
+```text
+first_phase_ratio: 0.75
+```
 
-### Two-Reference Examples
+This gives the primary reference a longer first stage while still allowing the secondary reference to affect the final look. In practice, `0.75` produced a more balanced two-reference blend than `0.50`.
+
+Useful range:
+
+```text
+0.70 - 0.80
+```
+
+- Lower values preserve more of the second-stage reference.
+- Higher values give the first-stage reference more visible influence.
+- `0.90` is usually too high and can make the blend feel one-sided.
+
+### Stage Ratio Test
+
+The references below were used for the stage-ratio tests:
+
+<p>
+  <img src="docs/images/two_ref_phase_references.jpg" width="100%" alt="Two reference images used for stage-ratio tests">
+</p>
+
+The rows compare `primary_reference = 1` and `primary_reference = 2`. The columns compare different `first_phase_ratio` values.
+
+<p>
+  <img src="docs/images/two_ref_phase_ratio_tiger.jpg" width="100%" alt="Two-reference first phase ratio test with tiger and watermelon prompt">
+</p>
+
+<p>
+  <img src="docs/images/two_ref_phase_ratio_supermarket.jpg" width="100%" alt="Two-reference first phase ratio test with supermarket prompt">
+</p>
+
+A narrower probe around `0.70 / 0.75 / 0.80` showed that `0.75` is a strong default:
+
+<p>
+  <img src="docs/images/two_ref_phase_ratio_robot.jpg" width="100%" alt="Two-reference 0.75 ratio probe with robot flower market prompt">
+</p>
+
+<p>
+  <img src="docs/images/two_ref_phase_ratio_cat.jpg" width="100%" alt="Two-reference 0.75 ratio probe with cat library prompt">
+</p>
+
+### Why `primary_reference` Exists
+
+`primary_reference` does not mean "copy this image". It selects which reference enters the first, longer style stage.
+
+With the recommended `first_phase_ratio = 0.75`, the primary reference usually acts as the main visual anchor. The secondary reference still participates in the later stage and can influence color accents, edge treatment, texture, background tendency, or overall atmosphere.
+
+This is why two-reference output is order-sensitive. The route is better understood as an ordered, stage-based style blend rather than a uniform average.
+
+### Two-Reference Order Examples
 
 Each pair below uses the same references and prompt, but swaps which reference is primary.
 
@@ -200,6 +251,7 @@ Our two-reference route may have touched part of a similar principle: references
 - Independent `ref_k_strength` control for the reference K path.
 - A tuned low `low_scale_end` route to preserve quality and suppress reference-content leakage.
 - Two-reference experimental route with explicit `primary_reference`.
+- Stage-ratio control for two-reference blending, with `first_phase_ratio = 0.75` as the recommended default.
 - Simplified UX: `recommended` for normal users, `custom` for parameter experiments.
 
 ## Limitations
@@ -207,7 +259,7 @@ Our two-reference route may have touched part of a similar principle: references
 - This is not the official Krea style reference module.
 - It is not a full LoRA replacement. It behaves like a training-free temporary style adapter in many single-reference cases, but it does not train or store a reusable style in model weights.
 - Single-reference transfer is currently the strongest and most stable route.
-- Two-reference transfer is experimental and order-sensitive.
+- Two-reference transfer is experimental, order-sensitive, and stage-ratio-sensitive.
 - Very weak or generic references may not produce a strong style signal.
 - Reference and target latent sizes must match for the current route.
 
@@ -227,8 +279,8 @@ The project only provides custom nodes. You still need a working Krea2 ComfyUI s
 
 Two example workflows are included alongside this project:
 
-- `workflows/Krea2 Style Transfer Workflow.json`
-- `workflows/Krea2 Two Style Transfer Workflow.json`
+- `workflows/Krea2 Style Transfer.json`
+- `workflows/Krea2 Two Style Transfer.json`
 
 Use the single-reference workflow first. It is the main supported path.
 

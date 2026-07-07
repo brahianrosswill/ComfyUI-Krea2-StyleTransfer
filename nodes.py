@@ -476,6 +476,7 @@ def _stage_weights(
     stage_blend: float,
     late_release: float,
     stage_shift: int = 0,
+    first_phase_ratio: float = 0.5,
 ) -> List[float]:
     count = max(1, len(ref_weights))
     base = [max(0.0, float(w)) for w in ref_weights[:count]]
@@ -548,6 +549,10 @@ def _stage_weights(
                 span = max(1e-6, edges[idx + 1] - edges[idx])
                 local_t = (p - edges[idx]) / span
                 break
+    elif count == 2:
+        split = max(0.05, min(0.95, float(first_phase_ratio)))
+        selected = 0 if p < split else 1
+        local_t = p / split if selected == 0 else (p - split) / max(1e-6, 1.0 - split)
     else:
         phase = p * float(count)
         selected = min(count - 1, int(math.floor(phase)))
@@ -870,6 +875,7 @@ def _patch_krea2_attention(dm: Any) -> Tuple[int, int]:
                             stage_blend,
                             late_release,
                             stage_shift,
+                            float(cfg.get("first_phase_ratio", 0.5)),
                         )
                         avg_delta = torch.zeros_like(native_target)
                         for ref_idx, delta in enumerate(deltas):
@@ -2210,6 +2216,7 @@ class Krea2TwoStyleTransfer:
         "ref_k_2": 1.08,
         "stage_schedule": "forward",
         "stage_blend": 0.0,
+        "first_phase_ratio": 0.75,
         "stage_focus": 0.85,
         "late_release": 0.0,
         "value_adain_strength": 0.65,
@@ -2264,6 +2271,7 @@ class Krea2TwoStyleTransfer:
                 "low_scale_start": ("FLOAT", {"default": 1.0, "min": -4.0, "max": 8.0, "step": 0.01, "advanced": True}),
                 "adain_strength": ("FLOAT", {"default": 0.85, "min": 0.0, "max": 1.0, "step": 0.01, "advanced": True}),
                 "blocks": ("STRING", {"default": "7-27", "advanced": True}),
+                "first_phase_ratio": ("FLOAT", {"default": 0.75, "min": 0.05, "max": 0.95, "step": 0.01}),
             }
         }
 
@@ -2294,6 +2302,7 @@ class Krea2TwoStyleTransfer:
         low_scale_start,
         adain_strength,
         blocks,
+        first_phase_ratio,
     ):
         if not isinstance(style_refs, dict) or not style_refs.get("latents"):
             raise ValueError("style_refs must come from Krea2 Two Style References.")
@@ -2313,6 +2322,7 @@ class Krea2TwoStyleTransfer:
         preset = self._RECOMMENDED
         stage_schedule = preset["stage_schedule"]
         stage_blend = preset["stage_blend"]
+        first_phase_ratio = float(first_phase_ratio)
         late_release = preset["late_release"]
         value_adain_strength = preset["value_adain_strength"]
         token_rms_cap = preset["token_rms_cap"]
@@ -2322,6 +2332,7 @@ class Krea2TwoStyleTransfer:
             style_strength = preset["style_strength"]
             ref_k_1 = preset["ref_k_1"]
             ref_k_2 = preset["ref_k_2"]
+            first_phase_ratio = preset["first_phase_ratio"]
             stage_focus = preset["stage_focus"]
             ref_value_mix = preset["ref_value_mix"]
             low_scale_end = preset["low_scale_end"]
@@ -2433,6 +2444,7 @@ class Krea2TwoStyleTransfer:
                 "stage_schedule": str(stage_schedule),
                 "stage_shift": int(stage_shift),
                 "stage_blend": float(stage_blend),
+                "first_phase_ratio": float(first_phase_ratio),
                 "rotate_strength": float(stage_focus),
                 "late_release": float(late_release),
                 "resolution_gain": float(resolution_gain),
@@ -2509,7 +2521,7 @@ class Krea2TwoStyleTransfer:
         debug = (
             f"multi_style_stage=true; mode={mode_s}; count={len(ref_clean_list)}; weights={','.join(f'{w:.3f}' for w in weights_f)}; "
             f"style_strength={strength:.2f}; primary_reference={primary_idx + 1}; schedule={stage_schedule}; stage_shift={int(stage_shift)}; "
-            f"stage_blend={float(stage_blend):.2f}; "
+            f"stage_blend={float(stage_blend):.2f}; first_phase_ratio={float(first_phase_ratio):.2f}; "
             f"stage_focus={float(stage_focus):.2f}; late_release={float(late_release):.2f}; "
             f"ref_k={','.join(f'{k:.3f}' for k in per_ref_k)}; ref_value_mix={float(ref_value_mix):.2f}; "
             f"low_scale_end={effective_low:.3f}; token_rms_cap={float(token_rms_cap):.2f}; resolution_gain={float(resolution_gain):.2f}; "

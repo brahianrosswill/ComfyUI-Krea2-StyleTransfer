@@ -115,8 +115,9 @@ Krea2 的 ComfyUI 本地免训练风格参考节点。
 - `primary_reference`
 - `ref_k_1`
 - `ref_k_2`
+- `first_phase_ratio`
 
-`primary_reference` 用来指定哪张参考图作为主风格锚点。
+`primary_reference` 用来指定哪张参考图进入第一阶段。推荐档里 `first_phase_ratio = 0.75`，因此这张图通常会成为主要视觉锚点。
 
 ### `Krea2 Size Preset`
 
@@ -152,25 +153,77 @@ scheduler: simple
 denoise: 1.0
 ```
 
-## 为什么多图最多只做两张
+## 双图参考模式
 
-多图功能目前有意限制为两张参考图。
+双图参考目前有意限制为两张参考图。
 
-在这条免训练路线里，参考图不是由一个训练好的官方融合模块统一融合。每张参考图都会把自己的风格信号带入 K/V 路径。两张图时，结果还比较可控：一张可以作为主风格锚点，另一张补充色彩、线条、纹理或氛围。
+在这条免训练路线里，参考图不是由一个训练好的官方融合模块统一融合。每张参考图都会把自己的风格信号带入 K/V 路径。两张图时，结果还比较可控：一张图提供主要风格方向，另一张图补充色彩、线条、纹理或氛围。
 
 但三张、四张以上时，多组风格信号往往会互相竞争，而不是稳定融合。实测中容易出现风格变弱、画质下降、随机由某张参考图主导，或者结果变得很难解释。
 
 所以对这条路线来说，两张是更实用、更可控的上限。
 
-## 为什么要区分首图
+### 分阶段融合
 
-双图参考不是简单加权平均。
+双图参考不是简单加权平均，而是分阶段注入。
 
-我们实测发现，参考图顺序会影响结果。第一张或者主参考图往往会影响整体风格入口，比如基础色调、轮廓方式、背景倾向、白边/黑边这类强视觉特征。
+被选为 `primary_reference` 的参考图会进入第一阶段，另一张参考图进入后半阶段。早期测试里我们使用 50/50 的阶段比例，但它并不等于视觉上的 50/50：后半段采样对最终线条、颜色、质感和画面定稿影响更强，所以第二阶段参考图经常显得过度主导。
 
-`primary_reference` 的作用就是让用户主动指定哪张图作为主风格锚点。副参考图仍然会参与，但主参考图更容易决定整体视觉方向。
+因此推荐档现在使用：
 
-### 双图效果
+```text
+first_phase_ratio: 0.75
+```
+
+它让主参考图拥有更长的第一阶段，同时仍然保留副参考图对最终风格的影响。实测中，`0.75` 比 `0.50` 更接近双图视觉融合。
+
+建议范围：
+
+```text
+0.70 - 0.80
+```
+
+- 数值更低：保留更多第二阶段参考图的味道。
+- 数值更高：第一阶段参考图的影响更明显。
+- `0.90` 通常太高，容易让融合变成单边主导。
+
+### 阶段比例测试
+
+下面这两张图是阶段比例测试使用的参考图：
+
+<p>
+  <img src="docs/images/two_ref_phase_references.jpg" width="100%" alt="双图阶段比例测试使用的参考图">
+</p>
+
+每张对比图里，上下两排分别是 `primary_reference = 1` 和 `primary_reference = 2`，横向是不同 `first_phase_ratio`。
+
+<p>
+  <img src="docs/images/two_ref_phase_ratio_tiger.jpg" width="100%" alt="老虎踩西瓜提示词下的双图阶段比例测试">
+</p>
+
+<p>
+  <img src="docs/images/two_ref_phase_ratio_supermarket.jpg" width="100%" alt="超市提示词下的双图阶段比例测试">
+</p>
+
+围绕 `0.70 / 0.75 / 0.80` 的小范围测试也说明，`0.75` 是一个更稳定的默认值：
+
+<p>
+  <img src="docs/images/two_ref_phase_ratio_robot.jpg" width="100%" alt="机器人花市提示词下的 0.75 阶段比例测试">
+</p>
+
+<p>
+  <img src="docs/images/two_ref_phase_ratio_cat.jpg" width="100%" alt="黑猫图书馆提示词下的 0.75 阶段比例测试">
+</p>
+
+### 为什么要区分 `primary_reference`
+
+`primary_reference` 不是让模型复制这张图，而是指定哪张参考图进入第一阶段。
+
+在推荐档 `first_phase_ratio = 0.75` 下，主参考图通常会成为主要视觉锚点。副参考图仍然会在后半阶段参与，影响色彩点缀、边缘处理、材质、背景倾向或整体氛围。
+
+所以双图输出对顺序敏感。更准确地说，这条路线是“有顺序的分阶段风格融合”，而不是把两张图做均匀平均。
+
+### 双图顺序示例
 
 下面每一组使用相同参考图和提示词，只是调换主参考图顺序。
 
@@ -204,6 +257,7 @@ denoise: 1.0
 - 独立的 reference K path 控制：`ref_k_strength`。
 - 低 `low_scale_end` 保质量、压内容泄露，再用 `ref_k_strength` 拉回风格。
 - 双图实验路线，带 `primary_reference` 主参考控制。
+- 双图阶段比例控制，推荐默认值为 `first_phase_ratio = 0.75`。
 - 更简单的使用方式：普通用户只用 `recommended`，高级用户再开 `custom`。
 
 ## 局限
@@ -211,7 +265,7 @@ denoise: 1.0
 - 这不是官方 Krea Style Reference 模块。
 - 它不是 LoRA 的完整替代品。它在很多单图风格参考场景里像一个免训练临时风格适配器，但不会训练或保存风格权重。
 - 单图参考是目前最稳定、最适合展示的路线。
-- 双图参考仍然是实验功能，且对顺序敏感。
+- 双图参考仍然是实验功能，且对顺序和阶段比例敏感。
 - 风格很弱或很通用的参考图，效果可能不明显。
 - 当前路线要求参考 latent 和目标 latent 尺寸匹配。
 
@@ -231,8 +285,8 @@ ComfyUI/custom_nodes/ComfyUI-Krea2-StyleTransfer
 
 项目配套两个工作流：
 
-- `workflows/Krea2 Style Transfer Workflow.json`
-- `workflows/Krea2 Two Style Transfer Workflow.json`
+- `workflows/Krea2 Style Transfer.json`
+- `workflows/Krea2 Two Style Transfer.json`
 
 建议先用单图工作流，它是当前主路线。
 

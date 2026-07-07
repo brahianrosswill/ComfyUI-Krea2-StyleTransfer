@@ -23,6 +23,7 @@ const MULTI_STAGE_CUSTOM_WIDGETS = new Set([
   "style_strength",
   "ref_k_1",
   "ref_k_2",
+  "first_phase_ratio",
   "stage_focus",
   "ref_value_mix",
   "low_scale_end",
