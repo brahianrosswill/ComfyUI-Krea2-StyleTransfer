@@ -2177,8 +2177,6 @@ class Krea2TwoStyleReferences:
             "required": {
                 "reference_latent_1": ("LATENT",),
                 "reference_latent_2": ("LATENT",),
-                "weight_1": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 2.0, "step": 0.05}),
-                "weight_2": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 2.0, "step": 0.05}),
             }
         }
 
@@ -2192,12 +2190,10 @@ class Krea2TwoStyleReferences:
         self,
         reference_latent_1,
         reference_latent_2,
-        weight_1,
-        weight_2,
         *args,
     ):
         latents = [reference_latent_1, reference_latent_2]
-        weights = [float(weight_1), float(weight_2)]
+        weights = [1.0, 1.0]
         refs = {
             "latents": latents,
             "weights": weights,

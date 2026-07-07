@@ -293,7 +293,7 @@
       ],
       "size": [
         225.53830137081673,
-        102
+        68
       ],
       "flags": {},
       "order": 13,
@@ -330,10 +330,7 @@
       "properties": {
         "Node name for S&R": "Krea2TwoStyleReferences"
       },
-      "widgets_values": [
-        0.5,
-        0.5
-      ]
+      "widgets_values": []
     },
     {
       "id": 1,
